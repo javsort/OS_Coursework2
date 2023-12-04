@@ -11,6 +11,10 @@ import java.util.*;
 public class MemoryMgmt {
     // Memory size is 8192 bytes - 8KB
 
+    // Variables for memory size
+    Integer totalSize = 8192;
+    Integer freeSize = 8192;
+
     // Variables for user input
     Integer selectedOption = 0;
     BufferedReader buffer = new BufferedReader(new InputStreamReader(System.in));
@@ -52,37 +56,50 @@ public class MemoryMgmt {
         MemoryMgmt memory = new MemoryMgmt();
         memory.promptMenu();
 
-        int trialHex = 0x0000;
-        int enInteger = 0;
+        
 
         for(int i = 0; i < 45; i++){
-            System.out.println("Hexadecimal: " + Integer.toHexString(trialHex));
-            System.out.println("Decimal: " + Integer.toHexString(enInteger));
-
-            trialHex = trialHex + 0x0001;
-            enInteger = enInteger + 1;
             
         }
 
-        System.out.println("\nDecimal: " + trialHex);
-        System.out.println("Hexadecimal: " + Integer.toHexString(trialHex));
     }
 
     // Implement malloc
     /*
      * Main points to follow:
-     * 
+     * allocate (size)
+     * return a pointer to the start of requested memory
+     * TOTAL MEMORY IS 8192 BYTES REMEMBER
+     *  - After reaching 8192 bytes, no more memory can be allocated, call sbrk
+     * Try to allocate through Best Fit
      */
     public int malloc(int size){
-        int pointer = 0;
+        UsedBlock Allocated = new UsedBlock(false, 0, false, size);
+        
+        if(Allocated.totalsize > freeSize){
+            System.out.println("Not enough memory to allocate. Call sbrk. (TO BE IMPLEMENTED)");
+            return -1;
+        }
 
-        return pointer;
+        freeSize = freeSize - Allocated.totalsize; 
+
+
+        return Allocated.pointerReturned;
     }
 
     // Free memory - multiple free calls trigger an exception
     /*
      * Main points to follow:
+     * Free memory chunk from the usedblock
+     * Coalesce free blocks whether it:
+     *  - has a free block before
+     *  - has a free block after
+     *  - has a free block before and after
+     * And update free list
      * 
+     * If no free block before or after, just add to free list
+     * Multiple free calls on the same pointer == exception
+     * Return nothing
      */
     public void free(int ptr){
 
@@ -91,37 +108,92 @@ public class MemoryMgmt {
     // Return a new array of memory and a new pointer 
     /*
      * Main points to follow:
-     * 
+     * return a new array of memory
+     * new array has to be the smallest power of 2 that can fit the size
+     * Every new chunk isn't strictly contiguous
      */
     public void sbrk(int size){
 
     }
 
     public abstract class MemoryBlock{
+        int previousSize;
+        boolean previousFree;
 
-        public int header;
-        public int size;
-        public int pointer;
-        public boolean isFree;
-        public boolean previousFree;
-        public int previousSize;
+        int size;
+        boolean isFree;
+        int pointerToReturn;
 
-        public MemoryBlock(int size, int pointer, boolean isFree, boolean previousFree, int previousSize){
-            
-            this.size = size;
-            this.pointer = pointer;
-            this.isFree = isFree;
+        int sizeHeader; 
+        int totalsize;// size + 8 for the header
+
+        int pointer_prev;
+        int pointer_next;
+
+        public MemoryBlock(int sizeHeader, boolean previousFree, int previousSize, boolean isFree, int size){
             this.previousFree = previousFree;
             this.previousSize = previousSize;
-            
+
+            this.sizeHeader = sizeHeader;
+
+            this.isFree = isFree;
+
+            if(size < 0){
+                this.size = 0;
+                this.totalsize = sizeHeader + size;
+                System.out.println("Size cannot be negative. Set to 0 to avoid unexpected behavior.");
+            } else {
+                this.size = size;
+                this.totalsize = sizeHeader + size;
+            }
         }
     }
 
-    public class FreeBlock{
-        int pointer_prev;
-        int pointer_next;
-        int length;
+    public class FreeBlock extends MemoryBlock {
+        private static int HEADER = 16;
 
+        public FreeBlock next;
+        public FreeBlock prev;
+
+        public FreeBlock(boolean previousFree, int previousSize, boolean isFree, int size, FreeBlock pointer_prev, FreeBlock pointer_next){
+            super(HEADER, previousFree, previousSize, isFree, size);
+            this.prev = pointer_prev;
+            this.next = pointer_next;
+        }
+
+        public int getSize(){
+            return this.size;
+        }
+
+    }
+
+    public class UsedBlock extends MemoryBlock {
+        private static int HEADER = 8;
+
+        public int assignedSp[];
+
+        public int pointerReturned;
+
+        public UsedBlock(boolean previousFree, int previousSize, boolean isFree, int size){
+            super(HEADER, previousFree, previousSize, isFree, size);
+
+            this.pointerReturned = previousSize + HEADER;
+
+            this.assignedSp = new int[size];
+        }
+
+        /*public boolean fillMemory(String dataString){
+            // Get size of string in UTF-8 encoding
+            byte[] toUTF8 = dataString.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            int stringInBytes = toUTF8.length;
+
+            if(toUTF8.length > assignedSp.length){
+                System.out.println("String is too big to fit in memory block.");
+                return false;
+            }
+
+            return true;
+        }*/
     }
 
     // run different tests and print results
