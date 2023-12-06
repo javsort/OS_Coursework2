@@ -1,6 +1,4 @@
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.BufferOverflowException;
 import java.util.*;
 
@@ -17,6 +15,9 @@ public class MemoryMgmt {
 
     static Integer ALLOC_HEADER = 8;
     static Integer FREE_HEADER = 16;
+
+    // Int to be used as pointer
+    public int pointer;
 
     
     // Variables for user input
@@ -339,9 +340,41 @@ public class MemoryMgmt {
             return toReturn;
         }
 
-        // to fill!
-        public int getDataInt(){
-            return this.assignedSp[0];
+        public boolean inputInt(int dataInt){
+            int i = 0;
+
+            while(i < assignedSp.length && assignedSp[i] != 0){
+                i++;
+            }
+
+            try{
+                if(i < assignedSp.length) {
+                    assignedSp[i] = dataInt;
+
+                    // Ints are 4 bytes long, so account in memory for that
+                    size = size - Integer.BYTES;
+                    pointerReturned = pointerReturned + assignedSp.length;
+
+                    return true;
+                } else {
+                    System.out.println("No more space to store data.");
+                    throw new BufferOverflowException();
+                }
+            } catch (BufferOverflowException e) {
+                System.out.println("Buffer Overflow Exception triggered. Please try again.");
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
+        public int getStoredInt(){
+            int i = 0;
+
+            if (i >= 0 && i < assignedSp.length) {
+                return assignedSp[i];
+            } else {
+                throw new IndexOutOfBoundsException("Index " + i + " is out of bounds!");
+            }
         }
 
         public int getPointer(){
@@ -353,7 +386,6 @@ public class MemoryMgmt {
     public void print(){
         switch (selectedOption) {
             case 1:
-                int pointer;
                 pointer = malloc(28);
 
                 pointer = inputDataString("Testing 1", pointer);
@@ -373,7 +405,28 @@ public class MemoryMgmt {
 
                 free(pointer);
                 break;
-        
+
+            case 2:
+                pointer = malloc(28);
+
+                pointer = inputDataInt(728, pointer);
+
+                if(pointer < 0){
+                    break;
+                }
+                
+                try{
+                    System.out.println("Sleeping for 1 second... to simulate cool computing stuff. Think ab ur day for a second :)\n");
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+
+                }
+
+                retrieveInt(pointer);
+
+                free(pointer);
+                break;
+
             default:
                 System.out.println("Invalid selection. Unknown Test choice.");
                 break;
@@ -381,7 +434,7 @@ public class MemoryMgmt {
     }
 
     public int inputDataString(String dataString, int pointer){
-        System.out.println("Storing the `" + dataString + "` string! At: " + getMeminHex(pointer) + " Please wait...\n");
+        System.out.println("Storing the `" + dataString + "` string at: " + getMeminHex(pointer) + "! Please wait...\n");
 
         for(UsedBlock current : usedBlocks){
             if(current.pointerReturned == pointer){
@@ -411,6 +464,37 @@ public class MemoryMgmt {
         System.out.println("Pointer not found. Please try again.");
     }
 
+    public int inputDataInt(int data, int pointer){
+        System.out.println("Storing the `" + data + "` int at: " + getMeminHex(pointer) + "! Please wait...\n");
+
+        for(UsedBlock current : usedBlocks){
+            if(current.pointerReturned == pointer){
+                if(current.inputInt(data)){
+                    return current.pointerReturned;
+                } else {
+                    return -1;
+                }
+            }
+        }
+
+        System.out.println("Pointer not found. Please try again.");
+        return -1;
+    }
+
+    public void retrieveInt(int pointer){
+        System.out.println("Retrieving data from pointer: " + getMeminHex(pointer) + ". Please wait...\n");
+
+        for(UsedBlock current : usedBlocks){
+            if(current.pointerReturned == pointer){
+                int storedInt = current.getStoredInt();
+                System.out.println("Int retrieved: '" + storedInt + "'\n");
+                return;
+            }
+        }
+
+        System.out.println("Pointer not found. Please try again.");
+    }
+
 
 
     /*
@@ -425,9 +509,11 @@ public class MemoryMgmt {
             System.out.println("          Memory Manager");
             System.out.println("  Select a problem to initialize");
             System.out.println("==================================\r\n");
-            System.out.println("1. Test 1");
-            System.out.println("2. Test 2");
-            System.out.println("3. Test 3");
+            System.out.println("1. Test 1 - Request 28 bytes -> store a String -> retrieve String -> free");
+            System.out.println("2. Test 2 - Request 28 bytes -> request 1024 bytes -> request 28 bytes -> free 1024 bytes -> request 512 bytes -> free all");
+            System.out.println("3. Test 3 - Request 7168 bytes -> request 1024 bytes -> free all");
+            System.out.println("4. Test 4 - Request 1024 bytes -> request 28 bytes -> free 28 bytes -> free 28 bytes again");
+            System.out.println("5. Test 5");
             System.out.println("0. Exit");
 
             System.out.print("\r\nEnter your selection: ");
@@ -478,12 +564,15 @@ public class MemoryMgmt {
             freeLists.get(i).clear();
         }
 
+        // Reset pointer
+        pointer = 0;
+
         // Clear used blocks
         usedBlocks.clear();
 
         // Variables for memory size
         absoluteSize = 8192;
-        usableSize = 8192;
+        usableSize = 8192 - FREE_HEADER;
 
         // Initial full free block
         FreeBlock OGfreeBlock = new FreeBlock(false, 0, true, 8192, null, null);
