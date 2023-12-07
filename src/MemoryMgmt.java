@@ -95,10 +95,17 @@ public class MemoryMgmt {
         // Get free slot to partition memory from 
         FreeBlock toUse = bestFit(size);            // Check if any free block is available, and choose the one to be used, else call sbrk
         
-        // if null, means there's no more space. Call sbrk
-        if(toUse.totalsize < size || toUse == null){
-            throw new OutOfMemoryError("Not enough memory to allocate. Call sbrk. (TO BE IMPLEMENTED)");
+        try {
+            // if null, means there's no more space. Call sbrk
+            if(toUse == null || toUse.totalsize < size){
+                throw new OutOfMemoryError();
+            }
+        } catch (OutOfMemoryError e) {
+            System.out.print("\nMemory limit exceeded, requesting further memory blocks... ");
+            UsedBlock newBlock = sbrk(size);
+            return newBlock.getPointerToWrite();
         }
+        
 
         // If yes, allocate through best fit
         UsedBlock Allocated = new UsedBlock(toUse.previousFree, toUse.previousSize, false, size);
@@ -180,7 +187,7 @@ public class MemoryMgmt {
         } else if(toAdd.getSize() < 4096){
             size4096.add(toAdd);
             //System.out.println("Free List added to size 4096. Total Size: " + toAdd.totalsize);
-        } else if(toAdd.getSize() < 8192){
+        } else if(toAdd.getSize() < 8192 || toAdd.getSize() >= 8192){
             size8192.add(toAdd);
             //System.out.println("Free List added to size 8192. Total Size: " + toAdd.totalsize);
         }
@@ -284,7 +291,6 @@ public class MemoryMgmt {
 
             if(current instanceof UsedBlock && current.isFree){
                 toFree = (UsedBlock) virtualMemory.get(i);
-
                 break;
             }
         }
@@ -306,6 +312,8 @@ public class MemoryMgmt {
         newFree.startAddress = toFree.getStartAddress();
         newFree.endAddress = toFree.getEndAddress();
 
+        sortMemory();
+
         // Check and update previous and next pointers
         for(int i = 0; i < virtualMemory.size(); i++){
             current = virtualMemory.get(i);
@@ -313,22 +321,6 @@ public class MemoryMgmt {
             // Update implicit free list
             if(current instanceof FreeBlock){
                 freeCurrent = (FreeBlock) current;
-
-                // Means it's in the middle of two free blocks - update for lower freeSlot
-                if(freeCurrent.next != null && freeCurrent.next.getStartAddress() > toFree.getStartAddress() && !freeCurrent.equals(newFree)){
-                    freeCurrent.setNext(newFree);
-                    newFree.setPrevious(freeCurrent);
-
-                    continue;
-                }
-
-                // Means it's in the middle of two free blocks as well - update for higher freeSlot
-                if(freeCurrent.prev != null && freeCurrent.prev.getStartAddress() < toFree.getStartAddress() && !freeCurrent.equals(newFree)){
-                    freeCurrent.setPrevious(newFree);
-                    newFree.setNext(freeCurrent);
-
-                    continue;
-                }
 
                 // Means it's the last one and a new one is being added after
                 if(freeCurrent.next == null && freeCurrent.getStartAddress() < toFree.getStartAddress() && !freeCurrent.equals(newFree)){
@@ -341,6 +333,29 @@ public class MemoryMgmt {
                 if(freeCurrent.prev == null && freeCurrent.getStartAddress() > toFree.getStartAddress() && !freeCurrent.equals(newFree)){
                     freeCurrent.setPrevious(newFree);
                     newFree.setNext(freeCurrent);
+                    continue;
+                }
+
+
+
+                // Means it's in the middle of two free blocks - update for lower freeSlot
+                if(freeCurrent.next != null && freeCurrent.next.getStartAddress() > toFree.getStartAddress() && !freeCurrent.equals(newFree)){
+                    newFree.setNext(freeCurrent.next);
+                    newFree.setPrevious(freeCurrent);
+
+                    freeCurrent.next.setPrevious(newFree);
+                    freeCurrent.setNext(newFree);
+                    
+                    continue;
+                }
+
+                // Means it's in the middle of two free blocks as well - update for higher freeSlot
+                if(freeCurrent.prev != null && freeCurrent.prev.getStartAddress() < toFree.getStartAddress() && !freeCurrent.equals(newFree)){
+                    newFree.setNext(freeCurrent);
+                    newFree.setPrevious(freeCurrent.prev);
+                    
+                    freeCurrent.prev.setNext(newFree);
+                    freeCurrent.setPrevious(newFree);
                     continue;
                 }
 
@@ -495,9 +510,48 @@ public class MemoryMgmt {
      * new array has to be the smallest power of 2 that can fit the size
      * Every new chunk isn't strictly contiguous
      */
-    public void sbrk(int size){
+    public UsedBlock sbrk(int size){
+        // Sleep for cool GUI computing efx purposes
+        guiEFX();
 
-        
+        // Find smallest power of 2 for size
+        double newFreeSize;
+
+        MemoryBlock lastBlock = virtualMemory.get(virtualMemory.size() - 1);
+
+        BufferChunk separator = new BufferChunk(lastBlock.isFree, lastBlock.totalsize, false, getRandomSize());
+        separator.startAddress = lastBlock.getEndAddress() + 1;
+        separator.endAddress = separator.getStartAddress() + separator.totalsize;
+
+        double power = Math.ceil(Math.log(size) / Math.log(2));
+        newFreeSize = Math.pow(2, power);
+
+        /*while(newFreeSize < size){
+            newFreeSize = Math.pow(newFreeSize, 2);
+        }*/
+
+        // Create new free block
+        UsedBlock newSpace = new UsedBlock(separator.isFree, separator.totalsize, false, (int) newFreeSize);
+
+        sortMemory();
+
+        // Update addresses
+        newSpace.startAddress = separator.getNewUsableAddress();
+        newSpace.endAddress = newSpace.getStartAddress() + newSpace.totalsize;
+        newSpace.pointerReturned = newSpace.getStartAddress() + ALLOC_HEADER;
+
+
+        System.out.print("memory successfully allocated. \nPointer: " + getMeminHex(newSpace.getPointerToWrite()) + ".\r\n\n");
+
+        return newSpace;
+    }
+
+    // Since it's a simulation, get a random size for the buffer chunk - virtual difference between OG memory and sbrk memory
+    public int getRandomSize(){
+        Random rand = new Random();
+        int random = rand.nextInt(1000) + 1;
+
+        return random;
     }
 
     /*
@@ -562,6 +616,27 @@ public class MemoryMgmt {
         public int getPointer(){
             return this.pointerToReturn;
         }
+    }
+
+    /*
+     * BufferChunk Class - used to simulate separation between OG memory and the one allocated by sbrk
+     */
+    public class BufferChunk extends MemoryBlock {
+        public BufferChunk(boolean previousFree, int previousSize, boolean isFree, int size){
+            super(0, previousFree, previousSize, isFree, size);
+
+            this.startAddress = previousSize;
+            this.endAddress = previousSize + totalsize;
+
+            virtualMemory.add(this);
+
+            
+        }
+
+        public int getNewUsableAddress(){
+            return endAddress + 1;
+        }
+
     }
 
     /*
@@ -800,7 +875,34 @@ public class MemoryMgmt {
                 }
 
                 break;
-                
+            
+            case 6: 
+                ptr1 = malloc(1024);
+
+                ptr2 = malloc(1024);
+
+                free(ptr1);
+
+                ptr3 = malloc(1024);
+
+                ptr4 = malloc(10240);
+
+                free(ptr2);
+                free(ptr3);
+                free(ptr4);
+
+                free(ptr2);
+                break;
+            
+            case 7: 
+                ptr1 = malloc(10024);
+                ptr2 = malloc(1024);
+
+                free(ptr1);
+
+                free(ptr2);
+
+                break;
             default:
                 System.out.println("Invalid selection. Unknown Test choice.");
                 break;
@@ -813,16 +915,22 @@ public class MemoryMgmt {
 
         UsedBlock toPrint;
         FreeBlock toPrintFree;
+        BufferChunk toPrintBuffer;
 
+        System.out.println("\nCurrent Memory: ");
         for(MemoryBlock list : virtualMemory){
             if(list instanceof FreeBlock){
                 toPrintFree = (FreeBlock) list;
                 System.out.println("Free block of size " + toPrintFree.getSize() + " at " + getMeminHex(toPrintFree.getStartAddress()) + " to " + getMeminHex(toPrintFree.getEndAddress()));
-            } else {
+            } else if (list instanceof UsedBlock){
                 toPrint = (UsedBlock) list;
                 System.out.println("Used block of size " + toPrint.getSize() + " at " + getMeminHex(toPrint.getStartAddress()) + " to " + getMeminHex(toPrint.getEndAddress()) + " with pointer " + getMeminHex(toPrint.getPointerToWrite()));
+            } else {
+                toPrintBuffer = (BufferChunk) list;
+                System.out.println("Buffer block of size " + toPrintBuffer.getSize() + " at " + getMeminHex(toPrintBuffer.getStartAddress()) + " to " + getMeminHex(toPrintBuffer.getEndAddress()));
             }
         }
+        System.out.println("\n");
     }
 
     // Print current memory of a used chunk
@@ -951,6 +1059,8 @@ public class MemoryMgmt {
             System.out.println("3. Test 3 - Request 7168 bytes -> request 1024 bytes -> free all");
             System.out.println("4. Test 4 - Request 1024 bytes -> request 28 bytes -> free 28 bytes -> free 28 bytes again");
             System.out.println("5. Test 5 - Request 1024 bytes -> store an int -> retrieve int -> free");
+            System.out.println("6. Test 6 - Request 1024 bytes -> request 1024 bytes -> free 1st 1024 bytes -> request 1024 bytes -> request 10KB -> free all -> free 2nd pointer again");
+            System.out.println("7. Test 7 - Request 10KB -> request 1024 bytes -> free 10KB -> free 1024 bytes");
             System.out.println("0. Exit");
 
             System.out.print("\r\nEnter your selection: ");
@@ -997,6 +1107,16 @@ public class MemoryMgmt {
                     print();
                     break;
 
+                case 6: 
+                    System.out.println("Test 6 initializing...\n");
+                    print();
+                    break;
+
+                case 7: 
+                    System.out.println("Test 7 initializing...\n");
+                    print();
+                    break;
+                
                 default:
                     System.out.println("Invalid selection. Bye!!!.\n");
                     return;
