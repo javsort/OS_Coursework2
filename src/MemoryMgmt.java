@@ -8,6 +8,7 @@ import java.util.*;
  */
 public class MemoryMgmt {
     // Memory size is 8192 bytes - 8KB
+    static final Integer memorySize = 8192;
 
     // Variables for memory size
     Integer absoluteSize;
@@ -65,6 +66,8 @@ public class MemoryMgmt {
         freeLists.add(size4096);
         freeLists.add(size8192);
 
+        virtualMemory = new ArrayList<>();
+
         usedBlocks = new ArrayList<>();
     }
 
@@ -100,8 +103,14 @@ public class MemoryMgmt {
 
         // Update free block
         toUse.previousFree = false;
-        toUse.previousSize += Allocated.totalsize;
+        toUse.previousSize += Allocated.size;
         toUse.size = toUse.size - Allocated.size;
+
+        Allocated.startAddress = toUse.startAddress;
+        Allocated.endAddress = Allocated.pointerReturned + size;
+        Allocated.pointerReturned = Allocated.startAddress + ALLOC_HEADER;
+
+        toUse.startAddress = Allocated.endAddress + 1;
 
         // Update free list sizes
         absoluteSize = absoluteSize - Allocated.totalsize;
@@ -114,13 +123,12 @@ public class MemoryMgmt {
 
         System.out.print("memory successfully allocated at " + getMeminHex(Allocated.pointerReturned) + ".\r\n\n");
 
+        sortMemory();
+
         return Allocated.pointerReturned;
     }
 
-
-    // Best fit
-    public FreeBlock bestFit(int size){
-
+    public void sortLists(){
         // Sort free lists
         freeLists.sort((list1, list2) -> {
             if (list1.isEmpty()) {
@@ -131,7 +139,13 @@ public class MemoryMgmt {
             }
             return Integer.compare(list1.get(0).getSize(), list2.get(0).getSize());
         });
+    }
 
+
+    // Best fit
+    public FreeBlock bestFit(int size){
+        sortLists();
+        
         for(List<MemoryBlock> list : freeLists){
             if(!list.isEmpty() && list.get(0).getSize() >= size){
 
@@ -177,14 +191,262 @@ public class MemoryMgmt {
      * Return nothing
      */
     public void free(int ptr){
+        System.out.print("Freeing pointer: " + getMeminHex(ptr) + "...");
+
         // Check if pointer is valid
+        if(ptr < 0){
+            System.out.println("Invalid pointer. Please try again.");
+            return;
+        }	
 
+        UsedBlock current = null;
+        FreeBlock newBlock = null;
 
-        // Check if pointer is already free
+        //MemoryBlock current = null;
+
+        int coalesce = 0;
+
+        for(int i = 0; i < virtualMemory.size(); i++){
+            try {
+                if(virtualMemory.get(i) instanceof UsedBlock){
+                    current = (UsedBlock) virtualMemory.get(i);
+
+                    if(current.pointerReturned == ptr){
+                    // If pointer matches, remove from used list and start new free
+                    //usedBlocks.remove(i);
+                    virtualMemory.remove(current);
+
+                    // newBlock with previous block characteristics to be updated
+                    newBlock = new FreeBlock(current.previousFree, current.previousSize, true, current.size - ALLOC_HEADER, null, null);
+                    newBlock.startAddress = current.startAddress;
+                    newBlock.endAddress = current.endAddress;
+
+                    addBackToFreeList(newBlock);
+
+                    break;
+
+                    // Check if pointer is already free or not in list
+                    } 
+                } else if (i == virtualMemory.size() - 1){
+                    throw(new Exception ("Pointer not found. Please try again."));
+                    
+                } else {
+                    continue;
+                }
+
+            } catch (Exception e) {
+                System.out.println("Pointer not found / not valid. Please try again.");
+                return;
+            }
+        }
+
+        System.out.println("\n");
+        printCurrentMemory();
+        System.out.println("\n");
+
+        updateFreeList(newBlock);
 
         // Check for upper and lower bounds
+        /*coalesce = checkBeforeAndAfter(newBlock);
+
+        switch(coalesce){
+            case 0:
+                // No coalesce
+                break;
+            case 1:
+                // Coalesce before
+                break;
+            case 2:
+                // Coalesce after
+                break;
+            case 3:
+                // Coalesce before and after
+                break;
+            default:
+                System.out.println("Error in coalesce. Please try again.");
+                return;
+        }*/
 
         // Sort free blocks
+        System.out.print(" memory successfully freed.\r\n\n");
+    }
+
+    public void updateFreeList(FreeBlock newFree){
+        sortLists();
+        sortMemory();
+
+        int distanceofUsed = 0;
+
+        FreeBlock previousChosen = null;
+
+
+        for(MemoryBlock current : virtualMemory){
+            // if its a used block, add on distance
+            if(current instanceof MemoryBlock){
+                if(current.previousFree && current.previousSize == newFree.size){
+                    distanceofUsed = current.endAddress - newFree.startAddress;
+                } else if (!current.previousFree) {
+                    distanceofUsed += current.totalsize;
+                }
+            }
+
+            if(current instanceof FreeBlock){
+                // Check if newFree is before
+                if(current.startAddress - distanceofUsed == newFree.endAddress){
+                    FreeBlock next = (FreeBlock) current;
+                    next.setPrevious(newFree);
+                    newFree.setNext(next);
+                }
+
+                // Check if newFree is after
+                if(current.equals(newFree) && previousChosen != null && newFree.startAddress - distanceofUsed == previousChosen.endAddress){
+                    FreeBlock prev = (FreeBlock) current;
+                    prev.setNext(newFree);
+                    newFree.setPrevious(prev);
+                }
+
+                previousChosen = (FreeBlock) current;
+            }
+        }
+
+        // Throw these somewhere
+        absoluteSize += newFree.totalsize;
+        usableSize += newFree.totalsize - FREE_HEADER;
+
+        System.out.println("\n");
+        printCurrentMemory();
+        System.out.println("\n");
+
+        /*int firstFreeBlockEnd = -1;
+        int secondFreeBlockStart = -1;
+
+        FreeBlock prev;
+        FreeBlock next;
+
+        for(MemoryBlock current : virtualMemory){
+            // Means we found the other free block
+            if(current instanceof FreeBlock){
+                // Check for new Free Block
+                // Either its in left
+                if(current.equals(newFree) && firstFreeBlockEnd == -1){
+                    prev = newFree;
+                    firstFreeBlockEnd = prev.endAddress;
+                }
+
+                // Or its in right
+                if(current.equals(newFree) && secondFreeBlockStart == -1 && firstFreeBlockEnd != -1){
+                    next = newFree;
+                    secondFreeBlockStart = next.startAddress;
+
+                }
+
+                if(firstFreeBlockEnd == -1 && secondFreeBlockStart == -1 && newFree.endAddress == (memorySize - current.startAddress + current.endAddress)){
+                    next = (FreeBlock) current;
+                    firstFreeBlockEnd = current.endAddress;
+                }
+
+                if(firstFreeBlockEnd == -1){
+                    firstFreeBlockEnd = current.endAddress;
+                } else {
+                    secondFreeBlockStart = current.startAddress;
+                }
+            }
+
+            if(firstFreeBlockEnd != -1 && secondFreeBlockStart != -1){
+                distance = secondFreeBlockStart - firstFreeBlockEnd;
+                break;
+            }
+        }
+
+        for(int i = 0; i < virtualMemory.size(); i++){
+            if(virtualMemory.get(i) instanceof FreeBlock){
+                FreeBlock current = (FreeBlock) virtualMemory.get(i);
+
+                if(!current.equals(newFree) && distance == (current.endAddress - newFree.startAddress)){
+
+                }
+            }
+        }
+
+
+        
+
+        for(List<MemoryBlock> list : freeLists){
+            if(!list.isEmpty()){
+                for(int i = 0; i < list.size(); i++){
+                    FreeBlock current = (FreeBlock) list.get(i);
+
+                    if(current.previousFree && current.previousSize == newFree.size){
+                        System.out.println("We found that newFree is exactly the previous block");
+                        current.setPrevious(newFree);
+                        newFree.setNext(current);
+                    } else if (!current.previousFree) {
+                        // get distance from free spot through allocated to main FREE
+
+
+                        // set everything
+                    }
+
+                    // Check if it's the previous block
+                    if(absoluteSize - current.previousSize == newFree.totalsize){
+                        
+                    }
+
+                    // Check if it's the next block
+                    if(newFree.previousSize == current.size){
+                        System.out.println("We found that newFree is the next block");
+                        newFree.setPrevious(current);
+                    }
+                }
+            }
+        }*/
+
+        //addBackToFreeList(newFree);
+    }
+
+    public void sortMemory(){
+        Collections.sort(virtualMemory, new Comparator<MemoryBlock>(){
+            @Override
+            public int compare(MemoryBlock block1, MemoryBlock block2) {
+                return Integer.compare(block1.startAddress, block2.startAddress);
+            }
+        });
+    }
+
+    public int checkBeforeAndAfter(FreeBlock newBlock){
+        FreeBlock current = null;
+
+        boolean left = false;
+        boolean right = false;
+
+
+        // Check if there is a free block before and after
+        for(int i = 0; i < freeLists.size(); i++){
+            for(int j = 0; j < freeLists.get(i).size(); j++){
+
+                if(freeLists.get(i).get(j) != null){
+                        current = (FreeBlock) freeLists.get(i).get(j);
+
+                        if(!current.prev.isFree && current.prev.totalsize == newBlock.totalsize){
+                            // Means coalesce used block to right
+                            newBlock.next = current;
+                            right = true;
+                        }
+
+                        if(!current.next.isFree && current.next.totalsize == newBlock.totalsize){
+                            // Means coalesce used block to left
+                            left = true;
+                        }
+
+                    // List of that size might be empty
+                } else {
+                    continue;
+                }
+                
+            }
+        }
+
+        return -1; // error
     }
 
     /*
@@ -233,6 +495,9 @@ public class MemoryMgmt {
         int pointer_prev;
         int pointer_next;
 
+        int startAddress;
+        int endAddress;
+
         public MemoryBlock(int sizeHeader, boolean previousFree, int previousSize, boolean isFree, int size){
             this.previousFree = previousFree;
             this.previousSize = previousSize;
@@ -271,10 +536,23 @@ public class MemoryMgmt {
             this.prev = pointer_prev;
             this.next = pointer_next;
             this.totalsize = size - FREE_HEADER;
+
+            this.startAddress = previousSize;
+            this.endAddress = previousSize + totalsize;
+
+            virtualMemory.add(this);
         }
 
         public int getSize(){
             return this.size;
+        }
+
+        public void setPrevious(FreeBlock prev){
+            this.prev = prev;
+        }
+
+        public void setNext(FreeBlock next){
+            this.next = next;
         }
 
     }
@@ -296,7 +574,11 @@ public class MemoryMgmt {
             this.totalsize = size + ALLOC_HEADER;
             this.assignedSp = new int[size];
 
+            // this.startAddress = previousSize;
+            //this.endAddress = startAddress + totalsize;
+
             usedBlocks.add(this);
+            virtualMemory.add(this);
         }
 
         public boolean inputString(String dataString){
@@ -368,13 +650,14 @@ public class MemoryMgmt {
         }
 
         public int getStoredInt(){
-            int i = 0;
-
-            if (i >= 0 && i < assignedSp.length) {
-                return assignedSp[i];
-            } else {
-                throw new IndexOutOfBoundsException("Index " + i + " is out of bounds!");
+            for(int i = assignedSp.length - 1 ; i >= 0; i--){
+                if(assignedSp[i] != 0){
+                    // Return int in last occupied position in assignedSpace
+                    return assignedSp[i];
+                }
             }
+
+            return 0;
         }
 
         public int getPointer(){
@@ -407,9 +690,10 @@ public class MemoryMgmt {
                 break;
 
             case 2:
-                pointer = malloc(28);
+                pointer = malloc(1024);
 
                 pointer = inputDataInt(728, pointer);
+                
 
                 if(pointer < 0){
                     break;
@@ -422,14 +706,66 @@ public class MemoryMgmt {
 
                 }
 
+                printCurrentState(pointer);
+
                 retrieveInt(pointer);
 
                 free(pointer);
                 break;
 
+            case 3: 
+                printCurrentMemory();
+                System.out.println("\n");
+
+                int ptr1 = malloc(28);
+                printCurrentMemory();
+                System.out.println("\n");
+
+                int ptr2 = malloc(28);
+
+                printCurrentMemory();
+                System.out.println("\n");
+
+                free(ptr1);
+                printCurrentMemory();
+                System.out.println("\n");
+
+                free(ptr2);
+                printCurrentMemory();
+                
+                
+
+                break;
             default:
                 System.out.println("Invalid selection. Unknown Test choice.");
                 break;
+        }
+    }
+
+    public void printCurrentMemory(){
+        sortMemory();
+
+        UsedBlock toPrint;
+        FreeBlock toPrintFree;
+
+        for(MemoryBlock list : virtualMemory){
+            if(list instanceof FreeBlock){
+                toPrintFree = (FreeBlock) list;
+                System.out.println("Free block of size " + toPrintFree.getSize() + " at " + getMeminHex(toPrintFree.startAddress) + " to " + getMeminHex(toPrintFree.endAddress));
+            } else {
+                toPrint = (UsedBlock) list;
+                System.out.println("Used block of size " + toPrint.getSize() + " at " + getMeminHex(toPrint.startAddress) + " to " + getMeminHex(toPrint.endAddress) + " with pointer " + getMeminHex(toPrint.pointerReturned));
+            }
+        }
+    }
+
+    public void printCurrentState(int pointer){
+        for(UsedBlock current : usedBlocks){
+            for(int i = 0; i < current.assignedSp.length; i++){
+                if(current.assignedSp[i] != 0){
+                    System.out.println("Current space at " + i + " is: " + current.assignedSp[i]);
+                }
+            }
         }
     }
 
@@ -569,6 +905,7 @@ public class MemoryMgmt {
 
         // Clear used blocks
         usedBlocks.clear();
+        virtualMemory.clear();
 
         // Variables for memory size
         absoluteSize = 8192;
