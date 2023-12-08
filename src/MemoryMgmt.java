@@ -4,7 +4,6 @@ import java.util.*;
 
 /**
  * MemoryMgmt - class written by: Student ID - 38880237
- * 
  */
 public class MemoryMgmt {
     // Memory size is 8192 bytes - 8KB
@@ -714,12 +713,11 @@ public class MemoryMgmt {
 
                     return true;
                 } else {
-                    System.out.println("String is too big to fit in the allocated memory.");
-                    throw new BufferOverflowException();
-
+                    throw new Exception();
                 }
-            } catch (BufferOverflowException e) {
-                System.out.println("Buffer Overflow Exception triggered. Please try again.");
+            } catch (Exception e) {
+                System.out.println("String is too big to fit in the allocated memory. Freeing this chunk.");
+                free(pointerReturned);
                 Thread.currentThread().interrupt();
                 return false;
             }
@@ -783,6 +781,241 @@ public class MemoryMgmt {
         }
     } 
 
+    // Print current memory
+    public void printCurrentMemory(){
+        sortMemory();
+
+        UsedBlock toPrint;
+        FreeBlock toPrintFree;
+        BufferChunk toPrintBuffer;
+
+        System.out.println("\nCurrent Memory: ");
+        for(MemoryBlock list : virtualMemory){
+            if(list instanceof FreeBlock){
+                toPrintFree = (FreeBlock) list;
+                System.out.println("Free block of size " + toPrintFree.getSize() + " at " + getMeminHex(toPrintFree.getStartAddress()) + " to " + getMeminHex(toPrintFree.getEndAddress()));
+            } else if (list instanceof UsedBlock){
+                toPrint = (UsedBlock) list;
+                System.out.println("Used block of size " + toPrint.getSize() + " at " + getMeminHex(toPrint.getStartAddress()) + " to " + getMeminHex(toPrint.getEndAddress()) + " with pointer " + getMeminHex(toPrint.getPointerToWrite()));
+            } else {
+                toPrintBuffer = (BufferChunk) list;
+                System.out.println("Buffer block of size " + toPrintBuffer.getSize() + " at " + getMeminHex(toPrintBuffer.getStartAddress()) + " to " + getMeminHex(toPrintBuffer.getEndAddress()));
+            }
+        }
+        System.out.println("\n");
+    }
+
+    // Print current memory of a used chunk
+    public void printCurrentState(int pointer){
+        for(MemoryBlock checking : virtualMemory){
+            if(checking instanceof UsedBlock){
+                UsedBlock current = (UsedBlock) checking;
+                for(int i = 0; i < current.assignedSp.length; i++){
+                    if(current.assignedSp[i] != 0){
+                        System.out.println("Current space at " + i + " is: " + current.assignedSp[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Input a string in memory
+    public int inputDataString(String dataString, int pointer){
+        System.out.println("Storing the `" + dataString + "` string at: " + getMeminHex(pointer) + "! Please wait...\n");
+
+
+        // Sleep for cool GUI computing efx purposes
+        guiEFX();
+
+        for(MemoryBlock checking : virtualMemory){
+
+            if(checking instanceof UsedBlock){
+                UsedBlock current = (UsedBlock) checking;
+
+                if(current.getPointerToWrite() == pointer){
+
+                    if(current.inputString(dataString)){
+                        return current.getPointerToWrite();
+
+                    } else {
+                        return -1;
+
+                    }
+                }
+            }
+        }
+
+        System.out.println("Pointer not found. Please try again.");
+        return -1;
+    }
+
+    // Retrieve a string from memory
+    public void retrieveString(int pointer){
+        System.out.println("Retrieving data from pointer: " + getMeminHex(pointer) + ". Please wait...\n");
+
+        // Sleep for cool GUI computing efx purposes
+        guiEFX();
+
+        for(MemoryBlock checking : virtualMemory){
+            if(checking instanceof UsedBlock){
+                UsedBlock current = (UsedBlock) checking;
+                if(current.getPointerToWrite() == pointer){
+                    String storedString = current.getStoredString();
+                    System.out.println("String retrieved: '" + storedString + "'\n");
+                    return;
+                }
+            }
+        }
+        
+        System.out.println("Pointer not found. Please try again.");
+    }
+
+
+    // Input an int in memory
+    public int inputDataInt(int data, int pointer){
+        System.out.println("Storing the `" + data + "` int at: " + getMeminHex(pointer) + "! Please wait...\n");
+
+        // Sleep for cool GUI computing efx purposes
+        guiEFX();
+
+        for(MemoryBlock checking : virtualMemory){
+            if(checking instanceof UsedBlock){
+                UsedBlock current = (UsedBlock) checking;
+                if(current.getPointerToWrite() == pointer){
+                    if(current.inputInt(data)){
+                        return current.getPointerToWrite();
+                    } else {
+                        return -1;
+                    }
+                }
+            }
+        }
+
+        System.out.println("Pointer not found. Please try again.");
+        return -1;
+    }
+
+    // Retrieve an int from memory
+    public void retrieveInt(int pointer){
+        System.out.println("Retrieving data from pointer: " + getMeminHex(pointer) + ". Please wait...\n");
+
+        // Sleep for cool GUI computing efx purposes
+        guiEFX();
+
+        for(MemoryBlock checking : virtualMemory){
+            if(checking instanceof UsedBlock){
+                UsedBlock current = (UsedBlock) checking;
+                if(current.getPointerToWrite() == pointer){
+                    int storedInt = current.getStoredInt();
+                    System.out.println("Int retrieved: '" + storedInt + "'\n");
+                    return;
+                }
+            }
+        }
+        System.out.println("Pointer not found. Please try again.");
+    }
+
+    /*
+     * Prompt Menu
+     * Prompt user to select a test to run
+     */
+    public void promptMenu(){
+        while(true){
+            cleanMemory();
+
+            System.out.println("\r\n====================================");
+            System.out.println("           Memory Manager");
+            System.out.println("      By Student ID - 38880237\n");
+            System.out.println("   Select a problem to initialize");
+            System.out.println("====================================\r\n");
+            System.out.println("1. Test 1   -   Request 28 bytes -> store a String -> retrieve String -> free");
+            System.out.println("2. Test 2   -   Request 28 bytes -> request 1024 bytes -> request 28 bytes -> free 1024 bytes -> request 512 bytes -> free all");
+            System.out.println("3. Test 3   -   Request 7168 bytes -> request 1024 bytes -> free all");
+            System.out.println("4. Test 4   -   Request 1024 bytes -> request 28 bytes -> free 28 bytes -> free 28 bytes again");
+            System.out.println("5. Test 5   -   Request 1024 bytes -> store an int -> retrieve int -> free");
+            System.out.println("6. Test 6   -   Request 1024 bytes -> request 1024 bytes -> free 1st 1024 bytes -> request 1024 bytes -> request 10KB -> free all -> free 2nd pointer again");
+            System.out.println("7. Test 7   -   Request 10KB -> request 1024 bytes -> free 10KB -> free 1024 bytes");
+            System.out.println("8. Test 8   -   Request 28 bytes -> store a String larger than 28 bytes -> retrieve String -> free");
+            System.out.println("9. Test 9   -   Request 2048 bytes -> request 2048 bytes -> store a String -> request 2048 bytes -> request 2048 bytes -> retrieve String -> free all");
+            System.out.println("10. Test 10 -   Request 1024 bytes -> request 4096 bytes -> request 1024 bytes -> request 1024 bytes -> free 2nd 1024 bytes -> free 1st 1024 bytes -> free 3rd 1024 bytes -> free 4096 bytes");
+            System.out.println("0. Exit");
+
+            System.out.print("\r\nEnter your selection: ");
+
+            //Get user input
+            try{
+                line = buffer.readLine();
+                selectedOption = Integer.parseInt(line);
+            } catch (NumberFormatException e) {
+                System.out.println("Invalid selection. Please try again.");
+                continue;
+            } catch (IOException e) {
+                System.out.println("IO Exception triggered. Bye!");
+            }
+
+            if(selectedOption == 0) {
+                System.out.println("Exiting now...\n");
+                break;
+            }
+
+            switch(selectedOption){
+                case 1:
+                    System.out.println("Test 1 initializing...\n");
+                    print();
+                    break;
+
+                case 2:
+                    System.out.println("Test 2 initializing...\n");
+                    print();
+                    break;
+
+                case 3:
+                    System.out.println("Test 3 initializing...\n");
+                    print();
+                    break;
+
+                case 4: 
+                    System.out.println("Test 4 initializing...\n");
+                    print();
+                    break;
+
+                case 5: 
+                    System.out.println("Test 5 initializing...\n");
+                    print();
+                    break;
+
+                case 6: 
+                    System.out.println("Test 6 initializing...\n");
+                    print();
+                    break;
+
+                case 7: 
+                    System.out.println("Test 7 initializing...\n");
+                    print();
+                    break;
+
+                case 8: 
+                    System.out.println("Test 8 initializing...\n");
+                    print();
+                    break;
+
+                case 9: 
+                    System.out.println("Test 9 initializing...\n");
+                    print();
+                    break;
+
+                case 10: 
+                    System.out.println("Test 10 initializing...\n");
+                    print();
+                    break;
+                
+                default:
+                    System.out.println("Invalid selection. Shutting of...\n");
+                    return;
+            }
+        }
+    }
+
     // run different tests and print results
     public void print(){
         int ptr1 = 0;
@@ -796,10 +1029,6 @@ public class MemoryMgmt {
                 pointer = malloc(28);
 
                 pointer = inputDataString("Testing 1", pointer);
-
-                if(pointer < 0){
-                    break;
-                }
 
                 retrieveString(pointer);
 
@@ -903,224 +1132,53 @@ public class MemoryMgmt {
                 free(ptr2);
 
                 break;
+
+            case 8:
+                ptr1 = malloc(28);
+
+                ptr1 = inputDataString("LOOK AT ME I'M LARGER THAN 28 BYTES", ptr1);
+
+                System.out.println("\nNone of the following requests should work now, allocated area has been freed.\n");
+
+                retrieveString(ptr1);
+                free(ptr1);
+                break;
+
+            case 9:
+                ptr1 = malloc(2048);
+                ptr2 = malloc(2048);
+
+                ptr2 = inputDataString("I'm just a string being stored at " + getMeminHex(ptr2), ptr2);
+
+                ptr3 = malloc(2048);
+                ptr4 = malloc(2048);
+
+                retrieveString(ptr2);
+
+                free(ptr1);
+                free(ptr2);
+                free(ptr3);
+                free(ptr4);
+
+                break;
+            case 10:
+                ptr1 = malloc(1024);
+
+                ptr2 = malloc(4096);
+
+                ptr3 = malloc(1024);
+
+                ptr4 = malloc(1024);
+
+                free(ptr3);
+                free(ptr1);
+                free(ptr4);
+                free(ptr2);
+
+                break;
             default:
                 System.out.println("Invalid selection. Unknown Test choice.");
                 break;
-        }
-    }
-
-    // Print current memory
-    public void printCurrentMemory(){
-        sortMemory();
-
-        UsedBlock toPrint;
-        FreeBlock toPrintFree;
-        BufferChunk toPrintBuffer;
-
-        System.out.println("\nCurrent Memory: ");
-        for(MemoryBlock list : virtualMemory){
-            if(list instanceof FreeBlock){
-                toPrintFree = (FreeBlock) list;
-                System.out.println("Free block of size " + toPrintFree.getSize() + " at " + getMeminHex(toPrintFree.getStartAddress()) + " to " + getMeminHex(toPrintFree.getEndAddress()));
-            } else if (list instanceof UsedBlock){
-                toPrint = (UsedBlock) list;
-                System.out.println("Used block of size " + toPrint.getSize() + " at " + getMeminHex(toPrint.getStartAddress()) + " to " + getMeminHex(toPrint.getEndAddress()) + " with pointer " + getMeminHex(toPrint.getPointerToWrite()));
-            } else {
-                toPrintBuffer = (BufferChunk) list;
-                System.out.println("Buffer block of size " + toPrintBuffer.getSize() + " at " + getMeminHex(toPrintBuffer.getStartAddress()) + " to " + getMeminHex(toPrintBuffer.getEndAddress()));
-            }
-        }
-        System.out.println("\n");
-    }
-
-    // Print current memory of a used chunk
-    public void printCurrentState(int pointer){
-        for(MemoryBlock checking : virtualMemory){
-            if(checking instanceof UsedBlock){
-                UsedBlock current = (UsedBlock) checking;
-                for(int i = 0; i < current.assignedSp.length; i++){
-                    if(current.assignedSp[i] != 0){
-                        System.out.println("Current space at " + i + " is: " + current.assignedSp[i]);
-                    }
-                }
-            }
-        }
-    }
-
-    // Input a string in memory
-    public int inputDataString(String dataString, int pointer){
-        System.out.println("Storing the `" + dataString + "` string at: " + getMeminHex(pointer) + "! Please wait...\n");
-
-
-        // Sleep for cool GUI computing efx purposes
-        guiEFX();
-
-        for(MemoryBlock checking : virtualMemory){
-            if(checking instanceof UsedBlock){
-                UsedBlock current = (UsedBlock) checking;
-                if(current.getPointerToWrite() == pointer){
-                    if(current.inputString(dataString)){
-                        return current.getPointerToWrite();
-                    } else {
-                        return -1;
-                    }
-                }
-            }
-        }
-
-        System.out.println("Pointer not found. Please try again.");
-        return -1;
-    }
-
-    // Retrieve a string from memory
-    public void retrieveString(int pointer){
-        System.out.println("Retrieving data from pointer: " + getMeminHex(pointer) + ". Please wait...\n");
-
-        // Sleep for cool GUI computing efx purposes
-        guiEFX();
-
-        for(MemoryBlock checking : virtualMemory){
-            if(checking instanceof UsedBlock){
-                UsedBlock current = (UsedBlock) checking;
-                if(current.getPointerToWrite() == pointer){
-                    String storedString = current.getStoredString();
-                    System.out.println("String retrieved: '" + storedString + "'\n");
-                    return;
-                }
-            }
-        }
-        
-        System.out.println("Pointer not found. Please try again.");
-    }
-
-
-    // Input an int in memory
-    public int inputDataInt(int data, int pointer){
-        System.out.println("Storing the `" + data + "` int at: " + getMeminHex(pointer) + "! Please wait...\n");
-
-        // Sleep for cool GUI computing efx purposes
-        guiEFX();
-
-        for(MemoryBlock checking : virtualMemory){
-            if(checking instanceof UsedBlock){
-                UsedBlock current = (UsedBlock) checking;
-                if(current.getPointerToWrite() == pointer){
-                    if(current.inputInt(data)){
-                        return current.getPointerToWrite();
-                    } else {
-                        return -1;
-                    }
-                }
-            }
-        }
-
-        System.out.println("Pointer not found. Please try again.");
-        return -1;
-    }
-
-
-    // Retrieve an int from memory
-    public void retrieveInt(int pointer){
-        System.out.println("Retrieving data from pointer: " + getMeminHex(pointer) + ". Please wait...\n");
-
-        // Sleep for cool GUI computing efx purposes
-        guiEFX();
-
-        for(MemoryBlock checking : virtualMemory){
-            if(checking instanceof UsedBlock){
-                UsedBlock current = (UsedBlock) checking;
-                if(current.getPointerToWrite() == pointer){
-                    int storedInt = current.getStoredInt();
-                    System.out.println("Int retrieved: '" + storedInt + "'\n");
-                    return;
-                }
-            }
-        }
-        System.out.println("Pointer not found. Please try again.");
-    }
-
-
-
-    /*
-     * Prompt Menu
-     * Prompt user to select a test to run
-     */
-    public void promptMenu(){
-        while(true){
-            cleanMemory();
-
-            System.out.println("\r\n====================================");
-            System.out.println("           Memory Manager");
-            System.out.println("      By Student ID - 38880237\n");
-            System.out.println("   Select a problem to initialize");
-            System.out.println("====================================\r\n");
-            System.out.println("1. Test 1 - Request 28 bytes -> store a String -> retrieve String -> free");
-            System.out.println("2. Test 2 - Request 28 bytes -> request 1024 bytes -> request 28 bytes -> free 1024 bytes -> request 512 bytes -> free all");
-            System.out.println("3. Test 3 - Request 7168 bytes -> request 1024 bytes -> free all");
-            System.out.println("4. Test 4 - Request 1024 bytes -> request 28 bytes -> free 28 bytes -> free 28 bytes again");
-            System.out.println("5. Test 5 - Request 1024 bytes -> store an int -> retrieve int -> free");
-            System.out.println("6. Test 6 - Request 1024 bytes -> request 1024 bytes -> free 1st 1024 bytes -> request 1024 bytes -> request 10KB -> free all -> free 2nd pointer again");
-            System.out.println("7. Test 7 - Request 10KB -> request 1024 bytes -> free 10KB -> free 1024 bytes");
-            System.out.println("0. Exit");
-
-            System.out.print("\r\nEnter your selection: ");
-
-            //Get user input
-            try{
-                line = buffer.readLine();
-                selectedOption = Integer.parseInt(line);
-            } catch (NumberFormatException e) {
-                System.out.println("Invalid selection. Please try again.");
-                continue;
-            } catch (IOException e) {
-                System.out.println("IO Exception triggered. Bye!");
-            }
-
-            if(selectedOption == 0) {
-                System.out.println("Exiting now. Bye!!!");
-                break;
-            }
-
-            switch(selectedOption){
-                case 1:
-                    System.out.println("Test 1 initializing...\n");
-                    print();
-                    break;
-
-                case 2:
-                    System.out.println("Test 2 initializing...\n");
-                    print();
-                    break;
-
-                case 3:
-                    System.out.println("Test 3 initializing...\n");
-                    print();
-                    break;
-
-                case 4: 
-                    System.out.println("Test 4 initializing...\n");
-                    print();
-                    break;
-
-                case 5: 
-                    System.out.println("Test 5 initializing...\n");
-                    print();
-                    break;
-
-                case 6: 
-                    System.out.println("Test 6 initializing...\n");
-                    print();
-                    break;
-
-                case 7: 
-                    System.out.println("Test 7 initializing...\n");
-                    print();
-                    break;
-                
-                default:
-                    System.out.println("Invalid selection. Bye!!!.\n");
-                    return;
-            }
         }
     }
 
